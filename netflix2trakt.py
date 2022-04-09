@@ -165,7 +165,7 @@ for show in netflixHistory.shows:
     for season in show.seasons:
         for episode in season.episodes:
             if episode.tmdbId is not None:
-                print("Adding epsiode to trakt:")
+                print("Adding episode to trakt:")
                 for watchedTime in episode.watchedAt:
                     try:
                         time = datetime.datetime.strptime(watchedTime + ' 20:15', config.CSV_DATETIME_FORMAT + ' %H:%M')
