@@ -25,7 +25,7 @@ If no match was found at all, the episode / movie is left out.
 * Python (tested with python 3.8.5 under macOS)
 
 ## Installation
-Just clone this repo, fill in the API keys and language information in the config.py file.
+Just clone this repo, copy config.example.py to config.py, and fill in the API keys and language information in the config.py file.
 If your Netflix csv file uses a different datetime format (default: day.month.year) then change the CSV_DATETIME_FORMAT setting in the config.py file.
 
 See how to register API access below.
