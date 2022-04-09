@@ -8,6 +8,9 @@ VIEWING_HISTORY_FILENAME = "NetflixViewingHistory.csv"
 # Use %Y-%m-%d for 2021-02-05 (Canada, ...)
 CSV_DATETIME_FORMAT = "%d.%m.%y"
 
+SYNC_TV_SHOWS = True
+SYNC_MOVIES = True
+
 TMDB_API_KEY = ""
 TMDB_LANGUAGE = "en"
 TMDB_DEBUG = False

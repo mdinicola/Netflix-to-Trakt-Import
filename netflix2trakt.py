@@ -46,113 +46,115 @@ with open(config.VIEWING_HISTORY_FILENAME, mode='r') as csvFile:
 logging.debug(netflixHistory.getJson())
 
 # Find TMDB IDs
-tmdbTv = TV()
-tmdbSeason = Season()
-for show in netflixHistory.shows:
-    logging.info("Searching %s" % show.name)
-    tmdbShow = tmdbTv.search(show.name)
-    if len(tmdbShow) == 0:
-        logging.warning("Show %s not found on TMDB!" % show.name)
-        continue
-    showId = tmdbShow[0]["id"]
-    details = tmdbTv.details(show_id = showId, append_to_response="")
-    numSeasons = details.number_of_seasons
-    for season in show.seasons:
-        if season.number is None and season.name is None:
-            # No season, then don't do anything
+if config.SYNC_TV_SHOWS:
+    tmdbTv = TV()
+    tmdbSeason = Season()
+    for show in netflixHistory.shows:
+        logging.info("Searching %s" % show.name)
+        tmdbShow = tmdbTv.search(show.name)
+        if len(tmdbShow) == 0:
+            logging.warning("Show %s not found on TMDB!" % show.name)
             continue
-
-        if season.number is None and season.name is not None:
-            # Try to get season number from season name
-            for i in range(1,numSeasons+1):
-                tmp = tmdbSeason.details(tv_id = showId, season_num = i , append_to_response="translations")
-                sleep(0.1)
-                if tmp.name == season.name:
-                    season.number = tmp.season_number
-                    logging.info("Found season for show with only season name (%s : %d - %s)" % (show.name, season.number, season.name))
-                    break
-            if season.number is None:
-                logging.info("No season number found for %s : %s" % (show.name, season.name))
+        showId = tmdbShow[0]["id"]
+        details = tmdbTv.details(show_id = showId, append_to_response="")
+        numSeasons = details.number_of_seasons
+        for season in show.seasons:
+            if season.number is None and season.name is None:
+                # No season, then don't do anything
                 continue
 
-        if season.number is not None:
-            # Main loop
-            logging.debug(showId)
-            if int(season.number) > numSeasons:
-                season.number = numSeasons #Netflix sometimes splits seasons that are actually one (example: Lupin)
-            tmdbResult = tmdbSeason.details(tv_id = showId, season_num = season.number , append_to_response="translations")
-            count = 0
-            for episode in season.episodes:
-                found = False
-                for tmdbEpisode in tmdbResult.episodes:
-                    # Compare TMDB episode names with Netflix Viewing History Episode name
-                    logging.debug(tmdbEpisode.name)
-                    if tmdbEpisode.name == episode.name:
-                        episode.setTmdbId( tmdbEpisode.id )
-                        episode.setEpisodeNumber( tmdbEpisode.episode_number )
-                        logging.info("Found Tmdb ID for %s : Season %d: %s (TMDB ID %d)" % (show.name, int(season.number), episode.name, tmdbEpisode.id))
-                        print("Found Tmdb ID for %s : Season %d: %s (TMDB ID %d)" % (show.name, int(season.number), episode.name, tmdbEpisode.id))
-                        found = True
-                        count += 1
+            if season.number is None and season.name is not None:
+                # Try to get season number from season name
+                for i in range(1,numSeasons+1):
+                    tmp = tmdbSeason.details(tv_id = showId, season_num = i , append_to_response="translations")
+                    sleep(0.1)
+                    if tmp.name == season.name:
+                        season.number = tmp.season_number
+                        logging.info("Found season for show with only season name (%s : %d - %s)" % (show.name, season.number, season.name))
                         break
-                if not(found):
-                    # Try finding episode number in the name
-                    tvshowregex = re.compile(r'(?:Folge|Episode) (\d{1,2})')
-                    res = tvshowregex.search( episode.name )
-                    if res is not None:
-                        number = int(res.group(1))
-                        if number <= len(tmdbResult.episodes):
-                            episode.setEpisodeNumber ( number )
-                            for tmdbEpisode in tmdbResult.episodes:
-                                if tmdbEpisode.episode_number == number:
-                                    episode.setTmdbId( tmdbEpisode.id )
-                                    count += 1
-                                    found = True
-                                    logging.info("Found Tmdb ID (by name) for %s : Season %d: %s (TMDB ID %d - %s Episode %d)" % (show.name, int(season.number), episode.name, tmdbEpisode.id, tmdbEpisode.name, tmdbEpisode.episode_number))
-                                    print("Found Tmdb ID (by name) for %s : Season %d: %s (TMDB ID %d - %s Episode %d)" % (show.name, int(season.number), episode.name, tmdbEpisode.id, tmdbEpisode.name, tmdbEpisode.episode_number))
-                        
+                if season.number is None:
+                    logging.info("No season number found for %s : %s" % (show.name, season.name))
+                    continue
 
-            # Try to estimate episode number from not found TMDB Names by number of episodes watched = number of episodes in season
-            if len(tmdbResult.episodes) == len(season.episodes):
-                # WHole season was watched, no title names found
-                lastEpisodeNumber = len(season.episodes)
+            if season.number is not None:
+                # Main loop
+                logging.debug(showId)
+                if int(season.number) > numSeasons:
+                    season.number = numSeasons #Netflix sometimes splits seasons that are actually one (example: Lupin)
+                tmdbResult = tmdbSeason.details(tv_id = showId, season_num = season.number , append_to_response="translations")
+                count = 0
                 for episode in season.episodes:
-                    if episode.tmdbId is not None:
-                        lastEpisodeNumber -= 1
-                        continue
+                    found = False
                     for tmdbEpisode in tmdbResult.episodes:
-                        if tmdbEpisode.episode_number == lastEpisodeNumber:
+                        # Compare TMDB episode names with Netflix Viewing History Episode name
+                        logging.debug(tmdbEpisode.name)
+                        if tmdbEpisode.name == episode.name:
                             episode.setTmdbId( tmdbEpisode.id )
                             episode.setEpisodeNumber( tmdbEpisode.episode_number )
-                            lastEpisodeNumber -= 1
-                            logging.info("Found Tmdb ID (by estimate) for %s : Season %d: %s (TMDB ID %d - %s Episode %d)" % (show.name, int(season.number), episode.name, tmdbEpisode.id, tmdbEpisode.name, tmdbEpisode.episode_number))
-                            print("Found Tmdb ID (by estimate) for %s : Season %d: %s (TMDB ID %d - %s Episode %d)" % (show.name, int(season.number), episode.name, tmdbEpisode.id, tmdbEpisode.name, tmdbEpisode.episode_number))
+                            logging.info("Found Tmdb ID for %s : Season %d: %s (TMDB ID %d)" % (show.name, int(season.number), episode.name, tmdbEpisode.id))
+                            print("Found Tmdb ID for %s : Season %d: %s (TMDB ID %d)" % (show.name, int(season.number), episode.name, tmdbEpisode.id))
+                            found = True
+                            count += 1
                             break
-            
-            for episode in season.episodes:
-                if episode.tmdbId is None:
-                    logging.info("No Tmdb ID found for %s : Season %d: %s" % (show.name, int(season.number), episode.name))
-                    print("No Tmdb ID found for %s : Season %d: %s" % (show.name, int(season.number), episode.name))
+                    if not(found):
+                        # Try finding episode number in the name
+                        tvshowregex = re.compile(r'(?:Folge|Episode) (\d{1,2})')
+                        res = tvshowregex.search( episode.name )
+                        if res is not None:
+                            number = int(res.group(1))
+                            if number <= len(tmdbResult.episodes):
+                                episode.setEpisodeNumber ( number )
+                                for tmdbEpisode in tmdbResult.episodes:
+                                    if tmdbEpisode.episode_number == number:
+                                        episode.setTmdbId( tmdbEpisode.id )
+                                        count += 1
+                                        found = True
+                                        logging.info("Found Tmdb ID (by name) for %s : Season %d: %s (TMDB ID %d - %s Episode %d)" % (show.name, int(season.number), episode.name, tmdbEpisode.id, tmdbEpisode.name, tmdbEpisode.episode_number))
+                                        print("Found Tmdb ID (by name) for %s : Season %d: %s (TMDB ID %d - %s Episode %d)" % (show.name, int(season.number), episode.name, tmdbEpisode.id, tmdbEpisode.name, tmdbEpisode.episode_number))
+                            
 
-        sleep(0.2)
+                # Try to estimate episode number from not found TMDB Names by number of episodes watched = number of episodes in season
+                if len(tmdbResult.episodes) == len(season.episodes):
+                    # WHole season was watched, no title names found
+                    lastEpisodeNumber = len(season.episodes)
+                    for episode in season.episodes:
+                        if episode.tmdbId is not None:
+                            lastEpisodeNumber -= 1
+                            continue
+                        for tmdbEpisode in tmdbResult.episodes:
+                            if tmdbEpisode.episode_number == lastEpisodeNumber:
+                                episode.setTmdbId( tmdbEpisode.id )
+                                episode.setEpisodeNumber( tmdbEpisode.episode_number )
+                                lastEpisodeNumber -= 1
+                                logging.info("Found Tmdb ID (by estimate) for %s : Season %d: %s (TMDB ID %d - %s Episode %d)" % (show.name, int(season.number), episode.name, tmdbEpisode.id, tmdbEpisode.name, tmdbEpisode.episode_number))
+                                print("Found Tmdb ID (by estimate) for %s : Season %d: %s (TMDB ID %d - %s Episode %d)" % (show.name, int(season.number), episode.name, tmdbEpisode.id, tmdbEpisode.name, tmdbEpisode.episode_number))
+                                break
+                
+                for episode in season.episodes:
+                    if episode.tmdbId is None:
+                        logging.info("No Tmdb ID found for %s : Season %d: %s" % (show.name, int(season.number), episode.name))
+                        print("No Tmdb ID found for %s : Season %d: %s" % (show.name, int(season.number), episode.name))
 
-tmdbMovie = Movie()
-for movie in netflixHistory.movies:
-    try:    
-        res = tmdbMovie.search(movie.name)
-        if res:
-            movie.tmdbId = res[0]["id"]
-            print("Found movie %s : %s (%d)" % (movie.name, res[0]["title"], movie.tmdbId))
-            logging.info("Found movie %s : %s (%d)" % (movie.name, res[0]["title"], movie.tmdbId))
-        else:
-            print("Movie not found: %s" % movie.name)
-            logging.info("Movie not found %s" % movie.name)
-    except TMDbException as e:
-        if config.TMDB_SYNC_STRICT is True:
-            raise
-        else:
-            print("Ignoring appeared exception while looking for movie %s" % movie.name)
-            logging.info("Ignoring appeared exception while looking for movie %s" % movie.name)
+            sleep(0.2)
+
+if config.SYNC_MOVIES:
+    tmdbMovie = Movie()
+    for movie in netflixHistory.movies:
+        try:    
+            res = tmdbMovie.search(movie.name)
+            if res:
+                movie.tmdbId = res[0]["id"]
+                print("Found movie %s : %s (%d)" % (movie.name, res[0]["title"], movie.tmdbId))
+                logging.info("Found movie %s : %s (%d)" % (movie.name, res[0]["title"], movie.tmdbId))
+            else:
+                print("Movie not found: %s" % movie.name)
+                logging.info("Movie not found %s" % movie.name)
+        except TMDbException as e:
+            if config.TMDB_SYNC_STRICT is True:
+                raise
+            else:
+                print("Ignoring appeared exception while looking for movie %s" % movie.name)
+                logging.info("Ignoring appeared exception while looking for movie %s" % movie.name)
 
 
 logging.info(netflixHistory.getJson())
@@ -161,50 +163,51 @@ logging.info(netflixHistory.getJson())
 # Sync to trakt
 traktIO = TraktIO()
 traktIO.init()
-for show in netflixHistory.shows:
-    for season in show.seasons:
-        for episode in season.episodes:
-            if episode.tmdbId is not None:
-                print("Adding episode to trakt:")
-                for watchedTime in episode.watchedAt:
-                    try:
-                        time = datetime.datetime.strptime(watchedTime + ' 20:15', config.CSV_DATETIME_FORMAT + ' %H:%M')
-                    except ValueError:
-                        # try the date with a dot (also for backwards compatbility)
-                        watchedTime = re.sub('[^0-9]', '.', watchedTime)
-                        time = datetime.datetime.strptime(watchedTime + ' 20:15', config.CSV_DATETIME_FORMAT + ' %H:%M')
-                    addInfo = {
-                        "episodes": [
-                            {
-                                "watched_at": time.strftime("%Y-%m-%dT%H:%M:%S.00Z"),
-                                "ids": {
-                                    "tmdb": episode.tmdbId
+if config.SYNC_TV_SHOWS:
+    for show in netflixHistory.shows:
+        for season in show.seasons:
+            for episode in season.episodes:
+                if episode.tmdbId is not None:
+                    print("Adding episode to trakt:")
+                    for watchedTime in episode.watchedAt:
+                        try:
+                            time = datetime.datetime.strptime(watchedTime + ' 20:15', config.CSV_DATETIME_FORMAT + ' %H:%M')
+                        except ValueError:
+                            # try the date with a dot (also for backwards compatbility)
+                            watchedTime = re.sub('[^0-9]', '.', watchedTime)
+                            time = datetime.datetime.strptime(watchedTime + ' 20:15', config.CSV_DATETIME_FORMAT + ' %H:%M')
+                        addInfo = {
+                            "episodes": [
+                                {
+                                    "watched_at": time.strftime("%Y-%m-%dT%H:%M:%S.00Z"),
+                                    "ids": {
+                                        "tmdb": episode.tmdbId
+                                    }
                                 }
-                            }
-                        ]
-                    }
-                    print(addInfo)
-                    traktIO.addEpisodeToHistory(addInfo)
-                    # Trakt API Rate limit: 1 POST call per second
-                    sleep(1.2)
-
-for movie in netflixHistory.movies:
-    if movie.tmdbId is not None:
-        for watchedTime in movie.watchedAt:
-            print("Adding movie to trakt:")
-            watchedTime = re.sub('[^0-9]', '.', watchedTime)
-            time = datetime.datetime.strptime(watchedTime + ' 20:15', config.CSV_DATETIME_FORMAT + ' %H:%M')
-            addInfo = {
-                        "movies": [
-                            {
-                                "title": movie.name,
-                                "watched_at": time.strftime("%Y-%m-%dT%H:%M:%S.00Z"),
-                                "ids": {
-                                    "tmdb": movie.tmdbId
+                            ]
+                        }
+                        print(addInfo)
+                        traktIO.addEpisodeToHistory(addInfo)
+                        # Trakt API Rate limit: 1 POST call per second
+                        sleep(1.2)
+if config.SYNC_MOVIES:
+    for movie in netflixHistory.movies:
+        if movie.tmdbId is not None:
+            for watchedTime in movie.watchedAt:
+                print("Adding movie to trakt:")
+                watchedTime = re.sub('[^0-9]', '.', watchedTime)
+                time = datetime.datetime.strptime(watchedTime + ' 20:15', config.CSV_DATETIME_FORMAT + ' %H:%M')
+                addInfo = {
+                            "movies": [
+                                {
+                                    "title": movie.name,
+                                    "watched_at": time.strftime("%Y-%m-%dT%H:%M:%S.00Z"),
+                                    "ids": {
+                                        "tmdb": movie.tmdbId
+                                    }
                                 }
-                            }
-                        ]
-                    }
-            print(addInfo)
-            traktIO.addMovie(addInfo)
-            sleep(1.2)
+                            ]
+                        }
+                print(addInfo)
+                traktIO.addMovie(addInfo)
+                sleep(1.2)
